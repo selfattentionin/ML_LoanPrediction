@@ -98,19 +98,56 @@ function updateRiskVisual(score) {
   }
 }
 
+function extractProbability(outputs) {
+  const outputValues = Object.values(outputs || {});
+
+  if (!outputValues.length) {
+    return null;
+  }
+
+  const probabilityTensor = outputValues.find((tensor) => {
+    const data = tensor && tensor.data ? tensor.data : [];
+    return data.length > 1 && Number.isFinite(Number(data[0])) && Number.isFinite(Number(data[1]));
+  }) || outputValues[0];
+
+  const data = probabilityTensor && probabilityTensor.data ? probabilityTensor.data : null;
+  if (!data || !data.length) {
+    return null;
+  }
+
+  if (data.length >= 2) {
+    return Number(data[1]);
+  }
+
+  return Number(data[0]);
+}
+
 async function runPrediction() {
   if (!modelSession) {
     reasonText.textContent = "The ONNX model is not available yet. Run the training notebook first to export the model.";
     return;
   }
 
-  const inputTensor = encodeInputFromForm();
-  const outputs = await modelSession.run({ input: inputTensor });
-  const output = outputs[Object.keys(outputs)[0]];
-  const probability = Number(output.data[1]);
-  const riskPercent = probability * 100;
+  try {
+    const inputTensor = encodeInputFromForm();
+    const outputs = await modelSession.run({ input: inputTensor });
+    window.__lastOnnxOutputs = outputs;
+    const probability = extractProbability(outputs);
+    window.__lastProbability = probability;
 
-  updateRiskVisual(riskPercent);
+    if (probability === null || Number.isNaN(probability) || !Number.isFinite(probability)) {
+      window.__lastPredictionError = new Error("The model returned an invalid probability.");
+      reasonText.textContent = "The model returned an invalid probability. Please try again with updated values.";
+      return;
+    }
+
+    const riskPercent = probability * 100;
+    updateRiskVisual(riskPercent);
+  } catch (error) {
+    console.error(error);
+    window.__lastPredictionError = error;
+    reasonText.textContent = error && error.message ? error.message : String(error);
+  }
 }
 
 form.addEventListener("submit", async (event) => {
