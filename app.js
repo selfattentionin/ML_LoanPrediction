@@ -47,11 +47,17 @@ async function loadModelAssets() {
   }
 }
 
-function encodeInputFromForm(formData) {
+function getFieldValue(fieldName) {
+  const element = document.getElementById(fieldName);
+  if (!element) return "";
+  return element.value;
+}
+
+function encodeInputFromForm() {
   const values = [];
 
   FEATURE_ORDER.forEach((fieldName) => {
-    const rawValue = formData.get(fieldName);
+    const rawValue = getFieldValue(fieldName);
 
     if (NUMERIC_FIELDS.includes(fieldName)) {
       values.push(Number(rawValue || 0));
@@ -92,21 +98,32 @@ function updateRiskVisual(score) {
   }
 }
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
+async function runPrediction() {
   if (!modelSession) {
     reasonText.textContent = "The ONNX model is not available yet. Run the training notebook first to export the model.";
     return;
   }
 
-  const inputTensor = encodeInputFromForm(new FormData(form));
+  const inputTensor = encodeInputFromForm();
   const outputs = await modelSession.run({ input: inputTensor });
   const output = outputs[Object.keys(outputs)[0]];
   const probability = Number(output.data[1]);
   const riskPercent = probability * 100;
 
   updateRiskVisual(riskPercent);
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await runPrediction();
+});
+
+form.addEventListener("input", async () => {
+  await runPrediction();
+});
+
+form.addEventListener("change", async () => {
+  await runPrediction();
 });
 
 loadModelAssets();
